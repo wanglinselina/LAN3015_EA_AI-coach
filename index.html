@@ -27,12 +27,16 @@
         .btn-check:hover { background-color: #047857; }
         .btn-attack { background-color: #b91c1c; }
         .btn-attack:hover { background-color: #991b1b; }
+        .btn-defense { background-color: #d97706; }
+        .btn-defense:hover { background-color: #b45309; }
         
         .feedback-box { background: #f8fafc; padding: 15px; border-radius: 6px; border: 1px dashed #cbd5e1; margin-top: 15px; display: none; }
         .loading { display: none; color: #0284c7; font-weight: bold; margin-top: 10px; text-align: center;}
         
         .fill-in-container { background: #f1f5f9; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
         .fill-in-container label { font-weight: bold; color: #0f172a; margin-top: 10px; display: block;}
+
+        #step3 { display: none; background: #fff7ed; border-left: 5px solid #d97706; }
     </style>
 </head>
 <body>
@@ -40,7 +44,7 @@
 <div class="container">
     <div class="header">
         <h1>🗣️ LAN3015 EA 評核：考前 AI 陪練平台</h1>
-        <p>社區復康及共融推廣活動 ➔ 六大考量因素全方位特訓</p>
+        <p>社區復康及共融推廣活動 ➔ 提案診斷與防守實戰特訓</p>
     </div>
 
     <div class="section">
@@ -88,43 +92,43 @@
         
         <div class="grid-2col">
             <button class="btn-check" onclick="checkScript()">🔍 1. 請 AI 嚴格批改 (檢驗 a 到 f 得分點)</button>
-            <button class="btn-check btn-attack" onclick="generateAttacks()">⚔️ 2. 自由討論特訓 (請同學攻擊我的提案)</button>
+            <button class="btn-check btn-attack" onclick="generateAttacks()">⚔️ 2. 自由討論假想敵 (請同學攻擊我的提案)</button>
         </div>
 
-        <div id="loading" class="loading">⏳ 系統正在思考中，請稍候...</div>
+        <div id="loading1" class="loading">⏳ 系統正在思考中，請稍候...</div>
         <div id="feedbackResult" class="feedback-box"></div>
+    </div>
+
+    <!-- 新增：步驟三 防守回應區 -->
+    <div class="section" id="step3">
+        <h2 style="color: #d97706; border-color: #fcd34d;">🛡️ 步驟三：自由討論防守實戰</h2>
+        <p style="font-size: 0.9em; color: #475569;">請根據上方 AI 同學提出的 2 個質疑，在下方寫出你的回應策略（記得運用委婉反對或提出協調方案的技巧）。</p>
+        
+        <textarea id="defenseInput" placeholder="針對同事 A 的質疑，我的回應是...&#10;針對同事 B 的質疑，我會補充說明..."></textarea>
+        
+        <button class="btn-check btn-defense" onclick="checkDefense()">🛡️ 3. 提交防守策略給教練評估</button>
+        
+        <div id="loading2" class="loading" style="color: #d97706;">⏳ 教練正在評估你的防守邏輯，請稍候...</div>
+        <div id="defenseResult" class="feedback-box" style="border-color: #fcd34d; background: #fffbeb;"></div>
     </div>
 </div>
 
 <script>
-    async function callDeepSeek(systemPrompt) {
+    // 用來儲存 AI 產生的攻擊問題，讓後續批改防守時有上下文
+    let currentAttacksText = "";
+
+    async function callDeepSeek(systemPrompt, userContent, outputElementId, loadingElementId, isAttack = false) {
         // ！！！請將下方引號內的網址，替換成你在 Google Apps Script 取得的 Web App URL ！！！
         const GOOGLE_PROXY_URL = 'https://script.google.com/macros/s/AKfycbwEexX2klkxu9jwhjHd1l6k9PRFLUd3DG3ztmYr4EKdo5bYNGT4jT0vZyvXflfKdSUuWQ/exec';
         
-        const role = document.getElementById('roleSelect').value;
-        const actNameOrg = document.getElementById('actNameOrg').value.trim();
-        const actDetails = document.getElementById('actDetails').value.trim();
-        const orgDetails = document.getElementById('orgDetails').value.trim();
-        const otherDetails = document.getElementById('otherDetails').value.trim();
-        const draft = document.getElementById('draftInput').value.trim();
-        
-        const feedbackBox = document.getElementById('feedbackResult');
-        const loading = document.getElementById('loading');
+        const apiKey = document.getElementById('apiKey').value.trim();
+        const feedbackBox = document.getElementById(outputElementId);
+        const loading = document.getElementById(loadingElementId);
 
-        if (draft.length < 50) { alert("講稿內容太少，請多寫一點再送出診斷！"); return; }
+        if (!apiKey) { alert("請先輸入 API Key！"); return; }
 
         loading.style.display = 'block';
         feedbackBox.style.display = 'none';
-
-        const userContent = `我是${role}。
-我的提案資料：
-活動與機構：${actNameOrg}
-活動考量(a,b,c)：${actDetails}
-機構考量(d,e)：${orgDetails}
-其他考量(f)：${otherDetails}
-
-我的完整發言稿：
-${draft}`;
 
         try {
             const response = await fetch(GOOGLE_PROXY_URL, {
@@ -140,8 +144,17 @@ ${draft}`;
             const data = await response.json();
             if (data.error) throw new Error(data.error.message);
             
-            feedbackBox.innerHTML = data.choices[0].message.content.replace(/```html|```/g, '');
+            const rawContent = data.choices[0].message.content.replace(/```html|```/g, '');
+            feedbackBox.innerHTML = rawContent;
             feedbackBox.style.display = 'block';
+
+            // 如果是生成攻擊問題，則記錄下來並展開步驟三
+            if (isAttack) {
+                currentAttacksText = rawContent;
+                document.getElementById('step3').style.display = 'block';
+                // 捲動到步驟三
+                document.getElementById('step3').scrollIntoView({ behavior: 'smooth' });
+            }
 
         } catch (error) {
             feedbackBox.innerHTML = `<p style="color:red;">❌ 錯誤：無法連線至伺服器。詳細錯誤：${error.message}</p>`;
@@ -151,43 +164,93 @@ ${draft}`;
         }
     }
 
-    function checkScript() {
-        const prompt = `你是一位嚴格的香港大專普通話講師。學生正在準備「復康會活動籌劃」的 EA 考試發言稿。
-請嚴格檢視學生的講稿是否涵蓋了以下「六大考量因素」（學生不需全部涵蓋，但至少要有清晰提及其中 3-4 項才能算及格，全涵蓋為優秀）：
-(a) 活動安排與內容是否可提升社會對復康共融及殘疾人士權利議題的關注和參與；
-(b) 活動如何與復康會上半年活動主題及其他項目配合；
-(c) 活動的特色（如體驗工作坊、共融活動或照顧者支援元素）；
-(d) 合辦機構的性質是否符合復康會的服務理念及無障礙要求；
-(e) 合辦機構的角色(如：提供場地、專業資源、義工支援或贊助)；
-(f) 其他考慮因素（如活動可及性、服務使用者參與安全及長期影響）。
+    function getStudentBaseData() {
+        const role = document.getElementById('roleSelect').value;
+        const actNameOrg = document.getElementById('actNameOrg').value.trim();
+        const actDetails = document.getElementById('actDetails').value.trim();
+        const orgDetails = document.getElementById('orgDetails').value.trim();
+        const otherDetails = document.getElementById('otherDetails').value.trim();
+        const draft = document.getElementById('draftInput').value.trim();
+        
+        return {
+            isValid: draft.length >= 50,
+            content: `我是${role}。
+提案資料：
+活動與機構：${actNameOrg}
+活動考量(a,b,c)：${actDetails}
+機構考量(d,e)：${orgDetails}
+其他考量(f)：${otherDetails}
 
-【重點警告】：如果學生扮演的是「主持」，請檢查他們是否有做開場報告並引導發言。
-絕對禁止直接幫學生寫出完美台詞，請用「提問」的方式引導他們自己修改。
+發言稿：
+${draft}`
+        };
+    }
+
+    function checkScript() {
+        const studentData = getStudentBaseData();
+        if (!studentData.isValid) { alert("講稿內容太少，請多寫一點再送出診斷！"); return; }
+
+        const prompt = `你是一位嚴格的香港大專普通話講師。學生正在準備「復康會活動籌劃」的 EA 考試發言稿。
+請嚴格檢視學生的講稿是否涵蓋了以下「六大考量因素」（學生至少要清晰提及 3-4 項才能及格，全涵蓋為優秀）：
+(a) 活動安排與內容是否可提升社會關注；
+(b) 如何與復康會上半年主題配合；
+(c) 活動的特色；
+(d) 合辦機構的理念配合度；
+(e) 合辦機構的具體角色；
+(f) 實際考慮因素（安全、可及性等）。
+
+【重點警告】：絕對禁止直接幫學生寫出完美台詞，請用「提問」引導他們自己修改。若學生扮演「主持」，檢查是否有開場引導。
 
 請輸出 HTML 格式的報告（不含 markdown 標記）：
 <h3 style="color:#0284c7;">📊 講稿診斷報告 (六大因素檢核)</h3>
 <p><strong>✅ 已經成功涵蓋的項目：</strong><br>[列出學生已經寫到的 a-f 項目]</p>
-<p style="color:#b91c1c;"><strong>❌ 遺漏的得分點與引導思考：</strong><br>[明確指出 a 到 f 中漏掉了哪些重要項目。針對遺漏的部分，提出 1-2 個具體問題，引導學生修改。例如：你沒有提到安全問題(f)，如果輪椅使用者參加，場地安全如何保障？]</p>`;
+<p style="color:#b91c1c;"><strong>❌ 遺漏的得分點與引導思考：</strong><br>[明確指出漏掉的項目，並提出 1-2 個具體問題引導修改。例如：你沒提到安全問題(f)，如果輪椅使用者參加，場地安全如何保障？]</p>`;
         
-        callDeepSeek(prompt);
+        callDeepSeek(prompt, studentData.content, 'feedbackResult', 'loading1', false);
     }
 
     function generateAttacks() {
+        const studentData = getStudentBaseData();
+        if (!studentData.isValid) { alert("請先填寫足夠的講稿內容，同學才知道怎麼攻擊你！"); return; }
+
         const prompt = `學生即將進行 EA 考試的 8-10 分鐘自由討論環節。
-請你扮演其他「不贊同這個提案」的復康會同事。請根據學生提案中在「(a)到(f)六大因素」裡的薄弱環節（特別是 (f)安全/可及性，或是 (b)主題不符、(e)機構配合度不夠），提出 2 個犀利、刁鑽的反駁問題，讓學生預先準備防守。
+請你扮演其他「不贊同這個提案」的復康會同事。根據學生提案中在「(a)到(f)六大因素」裡的薄弱環節（如安全、主題不符、預算等），提出 2 個犀利、刁鑽的反駁問題。
 
 請輸出 HTML 格式（不含 markdown 標記）：
 <h3 style="color:#b91c1c;">⚔️ 自由討論假想敵來襲！</h3>
 <p style="color:#475569;">同學很可能會針對 (a) 到 (f) 的細節這樣攻擊你的提案：</p>
 <div style="background:#fee2e2; padding:10px; border-radius:5px; margin-bottom:10px;">
-    <strong>同事 A 的質疑：</strong><br>[提出第一個刁鑽問題，例如針對安全隱患、場地可及性或理念不合]
+    <strong>同事 A 的質疑：</strong><br>[提出第一個刁鑽問題]
 </div>
 <div style="background:#fee2e2; padding:10px; border-radius:5px;">
-    <strong>同事 B 的質疑：</strong><br>[提出第二個刁鑽問題，例如針對與復康會主題的配合度或活動的長期影響]
-</div>
-<p style="margin-top:15px; font-weight:bold; color:#b45309;">👉 考前實戰作業：請你自己思考，如果遇到這兩個問題，你要如何運用「委婉反對」與「嘗試協調」的會議技巧來回應？</p>`;
+    <strong>同事 B 的質疑：</strong><br>[提出第二個刁鑽問題]
+</div>`;
         
-        callDeepSeek(prompt);
+        callDeepSeek(prompt, studentData.content, 'feedbackResult', 'loading1', true);
+    }
+
+    function checkDefense() {
+        const defense = document.getElementById('defenseInput').value.trim();
+        if (defense.length < 20) { alert("防守回應太短了！請具體說明你會如何回應同事的質疑。"); return; }
+        if (!currentAttacksText) { alert("請先點擊「自由討論假想敵」產生同事的質疑！"); return; }
+
+        const studentData = getStudentBaseData();
+
+        const prompt = `你是一位嚴厲的香港大專普通話講師。學生正在進行 EA 考試的自由討論實戰。
+以下是其他同事對學生提案提出的質疑：
+${currentAttacksText}
+
+【重點警告】：絕對禁止直接給出完美的回應台詞！你只能點評，並用「提問」引導他們思考。
+請根據學生的防守回應，評估他們是否有效解決了同事的質疑：
+1. 態度與技巧：是否運用了委婉反對、提出協調方案或同意部分觀點的會議技巧？
+2. 邏輯與內容：是否真的解決了質疑（如安全保障、預算控制等），還是只是在逃避問題？
+
+請輸出 HTML 格式的報告（不含 markdown 標記）：
+<h3 style="color:#b45309;">🛡️ 防守策略評估報告</h3>
+<p><strong>✅ 防守亮點：</strong><br>[指出回應中邏輯清晰或語氣得體的地方]</p>
+<p style="color:#b91c1c;"><strong>❌ 防守破綻與教練引導：</strong><br>[指出回應中邏輯不通、語氣生硬或沒真正解決問題的地方。並提出 1-2 個問題引導學生修改，例如：你雖然解釋了安全，但同事擔心的預算超支部分你打算怎麼說服他？]</p>`;
+        
+        callDeepSeek(prompt, `學生的防守回應內容：\n${defense}`, 'defenseResult', 'loading2', false);
     }
 </script>
 
